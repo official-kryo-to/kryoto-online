@@ -32,7 +32,7 @@ jobs:
         run: |
           $files = @(
             "relbuild/x86/steam_api.dll",
-            "relbuild/x64/steam_api64.dll"
+            "relbuild/x64/steam_api64.dll",
             "debbuild/x86/steam_api.dll",
             "debbuild/x64/steam_api64.dll"
           )
@@ -65,7 +65,7 @@ jobs:
         shell: pwsh
         run: |
           $packageRootdeb = "dist/kryoto-online-${{ github.ref_name }}.debug"
-          $archivePathdeb = "$packageRoot.zip"
+          $archivePathdeb = "$packageRootdeb.zip"
 
           New-Item -ItemType Directory -Path "$packageRootdeb/x86" -Force | Out-Null
           New-Item -ItemType Directory -Path "$packageRootdeb/x64" -Force | Out-Null
@@ -79,13 +79,16 @@ jobs:
 
           Compress-Archive -Path $packageRootdeb -DestinationPath $archivePathdeb
 
-      - name: Upload workflow artifact
+      - name: Upload workflow release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: |
-            kryoto-online-${{ github.ref_name }}.release
-            kryoto-online-${{ github.ref_name }}.debug
-          path: |
-            dist/kryoto-online-${{ github.ref_name }}.release.zip
-            dist/kryoto-online-${{ github.ref_name }}.debug.zip
+          name: kryoto-online-${{ github.ref_name }}.release
+          path: dist/kryoto-online-${{ github.ref_name }}.release.zip
+          if-no-files-found: error
+
+      - name: Upload workflow debug artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kryoto-online-${{ github.ref_name }}.debug
+          path: dist/kryoto-online-${{ github.ref_name }}.debug.zip
           if-no-files-found: error
