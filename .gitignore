@@ -1,0 +1,18 @@
+# Build output
+build/
+relbuild/
+x64/
+Debug/
+Release/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+!lib/libMinHook.*.lib
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.VC.db
