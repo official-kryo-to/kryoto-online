@@ -46,7 +46,7 @@ jobs:
       - name: Package release zip
         shell: pwsh
         run: |
-          $packageRoot = "dist/kryoto-online-${{ github.ref_name }}.release"
+          $packageRoot = "dist/kryoto-online-pr.release"
           $archivePath = "$packageRoot.zip"
 
           New-Item -ItemType Directory -Path "$packageRoot/x86" -Force | Out-Null
@@ -64,7 +64,7 @@ jobs:
       - name: Package debug zip
         shell: pwsh
         run: |
-          $packageRootdeb = "dist/kryoto-online-${{ github.ref_name }}.debug"
+          $packageRootdeb = "dist/kryoto-online-pr.debug"
           $archivePathdeb = "$packageRootdeb.zip"
 
           New-Item -ItemType Directory -Path "$packageRootdeb/x86" -Force | Out-Null
@@ -82,13 +82,13 @@ jobs:
       - name: Upload workflow release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-${{ github.ref_name }}.release
-          path: dist/kryoto-online-${{ github.ref_name }}.release.zip
+          name: kryoto-online-pr.release
+          path: dist/kryoto-online-pr.release.zip
           if-no-files-found: error
 
       - name: Upload workflow debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-${{ github.ref_name }}.debug
-          path: dist/kryoto-online-${{ github.ref_name }}.debug.zip
+          name: kryoto-online-pr.debug
+          path: dist/kryoto-online-pr.debug.zip
           if-no-files-found: error
