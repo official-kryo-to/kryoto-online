@@ -1,0 +1,136 @@
+name: Build KryotoOnline
+description: >
+  Build both DLLs and every plugin and package the release and debug
+  zips. Shared by the PR and release workflows so the two cannot drift -
+  they used to be two copies of the same eighty lines, and the copies
+  disagreed about which outputs to verify.
+
+inputs:
+  label:
+    description: >
+      Goes into the zip filenames - a version like `v1.8.1` for a release,
+      or `pr` for a pull request build.
+    required: true
+
+outputs:
+  release-zip:
+    description: Path to the release zip.
+    value: ${{ steps.package.outputs.release-zip }}
+  debug-zip:
+    description: Path to the debug zip.
+    value: ${{ steps.package.outputs.debug-zip }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    # kryotoO.dll first, so a core that no longer builds fails here
+    # rather than after the ten-times-longer proxy compile.
+    - name: Build kryotoO.dll
+      shell: pwsh
+      run: |
+        foreach ($cfg in @('Release','Debug')) {
+          foreach ($plat in @('x64','Win32')) {
+            Write-Host "==> kryotoO $cfg|$plat"
+            msbuild kryotoO.vcxproj -p:Configuration=$cfg -p:Platform=$plat -m
+            if ($LASTEXITCODE -ne 0) { throw "kryotoO $cfg|$plat failed" }
+          }
+        }
+
+    - name: Build steam_api(64).dll
+      shell: pwsh
+      run: |
+        foreach ($cfg in @('Release','Debug')) {
+          foreach ($plat in @('x64','Win32')) {
+            Write-Host "==> kryoto_online $cfg|$plat"
+            msbuild kryoto_online.vcxproj -p:Configuration=$cfg -p:Platform=$plat -m
+            if ($LASTEXITCODE -ne 0) { throw "kryoto_online $cfg|$plat failed" }
+          }
+        }
+
+    # Every plugins/*/*.vcxproj, so a new plugin is picked up without
+    # touching this file. Release|x64 only: the plugins link the release
+    # libMinHook.x64.lib, which has no debug variant.
+    - name: Build plugins
+      shell: pwsh
+      run: |
+        $projs = Get-ChildItem -Path plugins -Recurse -Filter *.vcxproj
+        if (-not $projs) { throw "No plugin projects found under plugins/" }
+        foreach ($p in $projs) {
+          Write-Host "==> $($p.Name) [Release|x64]"
+          msbuild $p.FullName -p:Configuration=Release -p:Platform=x64 -m
+          if ($LASTEXITCODE -ne 0) { throw "Plugin build failed: $($p.Name)" }
+        }
+
+    - name: Verify build outputs
+      shell: pwsh
+      run: |
+        # kryotoO.dll is listed here for the same reason the emulator
+        # DLL is: a package missing it installs cleanly and then does
+        # nothing at runtime except write one line to a log.
+        $files = @(
+          'relbuild/x64/steam_api64.dll', 'relbuild/x64/kryotoO.dll',
+          'relbuild/x86/steam_api.dll',   'relbuild/x86/kryotoO32.dll',
+          'debbuild/x64/steam_api64.dll', 'debbuild/x64/kryotoO.dll',
+          'debbuild/x86/steam_api.dll',   'debbuild/x86/kryotoO32.dll'
+        )
+        $missing = $files | Where-Object { -not (Test-Path $_) }
+        if ($missing) { throw "Missing build output(s):`n  $($missing -join "`n  ")" }
+
+    - name: Package
+      id: package
+      shell: pwsh
+      env:
+        LABEL: ${{ inputs.label }}
+      run: |
+        # Flat zips - the arch folders sit at the ROOT of the archive,
+        # with no wrapper directory.
+        #
+        # Kryoto Forge unpacks this straight into its tools folder and
+        # then looks for <tools>/kryoto_online/x64/steam_api64.dll. A
+        # wrapper directory buried the DLLs one level deeper than
+        # anything looked, so the install succeeded, the emulator was
+        # never found, and every online build failed on a missing tool.
+        function New-Package {
+          param($Root, $BinDir)
+
+          New-Item -ItemType Directory -Path "$Root/x64" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$Root/x86" -Force | Out-Null
+
+          Copy-Item "$BinDir/x64/steam_api64.dll" "$Root/x64/steam_api64.dll" -Force
+          Copy-Item "$BinDir/x64/kryotoO.dll"     "$Root/x64/kryotoO.dll"     -Force
+          Copy-Item "$BinDir/x86/steam_api.dll"   "$Root/x86/steam_api.dll"   -Force
+          Copy-Item "$BinDir/x86/kryotoO32.dll"   "$Root/x86/kryotoO32.dll"   -Force
+
+          # Plugins are Release-only and go in both packages: they are
+          # per-game opt-ins, not build artifacts of the core.
+          New-Item -ItemType Directory -Path "$Root/plugins" -Force | Out-Null
+          Get-ChildItem -Path plugins -Recurse -Filter *.dll |
+            Where-Object { ($_.FullName -replace '\\','/') -match '/relbuild/x64/' } |
+            ForEach-Object { Copy-Item $_.FullName "$Root/plugins/$($_.Name)" -Force }
+
+          # patch.bat wants the Photon plugin beside it so a game folder
+          # can be dropped onto it straight out of the extracted zip.
+          if (Test-Path 'patch.bat') {
+            Copy-Item 'patch.bat' "$Root/patch.bat" -Force
+            $photon = "plugins/photon_universal/relbuild/x64/photon_universal.dll"
+            if (Test-Path $photon) { Copy-Item $photon "$Root/photon_universal.dll" -Force }
+          }
+        }
+
+        $rel = "dist/kryoto-online-$env:LABEL-release"
+        $deb = "dist/kryoto-online-$env:LABEL-debug"
+
+        New-Package -Root $rel -BinDir 'relbuild'
+        New-Package -Root $deb -BinDir 'debbuild'
+
+        foreach ($p in @($rel, $deb)) {
+          $zip = "$p.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$p/*" -DestinationPath $zip
+        }
+
+        "release-zip=$rel.zip" >> $env:GITHUB_OUTPUT
+        "debug-zip=$deb.zip"   >> $env:GITHUB_OUTPUT

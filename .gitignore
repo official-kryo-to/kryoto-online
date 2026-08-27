@@ -1,11 +1,21 @@
-# Build output
-build/
+# Build output.
+#
+# The leading slash on these ANCHORS them to the repository root. Without
+# it, `build/` matches a directory called `build` at any depth - which
+# silently swallowed `.github/actions/build/`, so the composite action
+# both workflows call was never committed and every CI run died with
+# "Can't find 'action.yml'". Nothing showed in `git status`, because
+# ignored files do not.
+#
+# relbuild/ and debbuild/ stay unanchored on purpose: each plugin writes
+# its own, under plugins/<name>/.
+/build/
 relbuild/
 debbuild/
-dist/
-x64/
-Debug/
-Release/
+/dist/
+/x64/
+/Debug/
+/Release/
 *.obj
 *.pdb
 *.ilk
