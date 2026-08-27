@@ -1,0 +1,16 @@
+; The core's entire public surface.
+;
+; A .def rather than __declspec(dllexport) so both architectures
+; export the same plain names: on x86 an extern "C" __cdecl symbol
+; is `_KryotoO_Startup` in the object file, and the proxy asks
+; GetProcAddress for `KryotoO_Startup`. The linker reconciles the
+; two here; a dllexport attribute would leave that to convention.
+;
+; Adding a name is an ABI change. Bump KRYOTOO_ABI_VERSION with it.
+EXPORTS
+    KryotoO_AbiVersion
+    KryotoO_Startup
+    KryotoO_LoadPlugins
+    KryotoO_InstallSpoofHooks
+    KryotoO_InitPlugins
+    KryotoO_Shutdown

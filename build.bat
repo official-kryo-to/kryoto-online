@@ -1,12 +1,43 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
-set "PROJECT=%~dp0kryoto_online.vcxproj"
+rem ============================================================
+rem  Build both DLLs, both architectures.
+rem
+rem    build.bat          Release -> relbuild\
+rem    build.bat debug    Debug   -> debbuild\
+rem
+rem  The old version hunted for MSBuild at one hard-coded path -
+rem  Visual Studio 2022 Professional - so it failed on Community,
+rem  on Build Tools, and on anything newer, with "MSBuild not
+rem  found" on machines that had a perfectly good one.
+rem  vswhere is the supported way to ask, and it ships with every
+rem  installer since 2017.
+rem ============================================================
 
-REM Find MSBuild
+set "CONFIG=Release"
+set "OUTDIR=relbuild"
+if /i "%~1"=="debug" (
+    set "CONFIG=Debug"
+    set "OUTDIR=debbuild"
+)
+
+set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 set "MSBUILD="
-for /f "delims=" %%i in ('dir /b /s "C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe" 2^>nul') do (
-    if not defined MSBUILD set "MSBUILD=%%i"
+
+if exist "%VSWHERE%" (
+    for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -prerelease -products * ^
+        -requires Microsoft.Component.MSBuild ^
+        -find MSBuild\**\Bin\MSBuild.exe 2^>nul`) do (
+        if not defined MSBUILD set "MSBUILD=%%i"
+    )
+)
+
+rem Already in a developer prompt? Then it is on PATH and vswhere is moot.
+if not defined MSBUILD (
+    for /f "delims=" %%i in ('where msbuild 2^>nul') do (
+        if not defined MSBUILD set "MSBUILD=%%i"
+    )
 )
 
 if not defined MSBUILD (
@@ -22,39 +53,42 @@ if not defined MSBUILD (
 )
 
 echo Found MSBuild: %MSBUILD%
+echo Configuration: %CONFIG%
 echo.
 
+rem kryotoO first: it is what the proxy loads, and building it first
+rem means a broken core fails before the ten-times-longer proxy build.
+call :build "kryotoO.vcxproj"       x64   "kryotoO.dll"       || exit /b 1
+call :build "kryotoO.vcxproj"       Win32 "kryotoO32.dll"     || exit /b 1
+call :build "kryoto_online.vcxproj" x64   "steam_api64.dll"   || exit /b 1
+call :build "kryoto_online.vcxproj" Win32 "steam_api.dll"     || exit /b 1
+
 echo ========================================
-echo  Building x86 (steam_api.dll)
+echo  All builds completed successfully
 echo ========================================
-"%MSBUILD%" "%PROJECT%" -p:Configuration=Release -p:Platform=Win32 -m
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] x86 build failed.
-    pause
-    exit /b 1
-)
-echo x86 build succeeded: relbuild\x86\steam_api.dll
+echo  x64: %OUTDIR%\x64\steam_api64.dll + kryotoO.dll
+echo  x86: %OUTDIR%\x86\steam_api.dll   + kryotoO32.dll
 echo.
-
+echo  Ship BOTH files from a folder together - the proxy loads
+echo  the core from beside itself.
 echo ========================================
-echo  Building x64 (steam_api64.dll)
-echo ========================================
-"%MSBUILD%" "%PROJECT%" -p:Configuration=Release -p:Platform=x64 -m
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] x64 build failed.
-    pause
-    exit /b 1
-)
-echo x64 build succeeded: relbuild\x64\steam_api64.dll
-echo.
-
-echo ========================================
-echo  Both builds completed successfully
-echo ========================================
-echo  x86: relbuild\x86\steam_api.dll
-echo  x64: relbuild\x64\steam_api64.dll
-echo ========================================
-
 pause
+exit /b 0
+
+:build
+setlocal
+set "PROJ=%~1"
+set "PLAT=%~2"
+set "WHAT=%~3"
+echo ========================================
+echo  %WHAT%  [%CONFIG% ^| %PLAT%]
+echo ========================================
+"%MSBUILD%" "%~dp0%PROJ%" -p:Configuration=%CONFIG% -p:Platform=%PLAT% -m
+if errorlevel 1 (
+    echo.
+    echo [ERROR] %WHAT% [%CONFIG% ^| %PLAT%] failed.
+    pause
+    endlocal & exit /b 1
+)
+echo.
+endlocal & exit /b 0

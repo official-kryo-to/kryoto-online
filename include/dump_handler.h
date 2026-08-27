@@ -1,10 +1,13 @@
-/**
- *  This should only be a debug build feature, as it is not needed by myself really.
- *  This also only dumps crashes that may occur when using this, I cannot guarantee stability. 
- *  So do expect potential issues. Thank you for your patience.
- *
- *  ~veeλnti<3 2026
- */
+// Minidump writer, Debug builds only.
+//
+// It catches crashes inside this DLL, which is the case worth having a
+// dump for - a crash in the game's own code is the game's business.
+// MiniDumpWriteDump is resolved from DbgHelp.dll at runtime rather than
+// linked, so the release build carries no trace of it.
+//
+// This never compiled before 1.8.1: the Debug configuration defined
+// NDEBUG, so the guard below was false in every build that has ever
+// shipped.
 
 #pragma once
 

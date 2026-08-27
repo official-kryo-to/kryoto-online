@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  steam_api(64).dll - the Steamworks proxy.
+  kryotoO.dll - the patch core. See core/kryotoo_abi.h for why it is
+  a separate DLL from steam_api(64).dll.
 
-  It forwards to the real steamclient and nothing else. Every patch
-  lives in kryotoO.dll; see core/kryotoo_abi.h for why. This project
-  therefore links no hooking library at all.
-
-  The four configurations used to be four copies of the same
-  settings, with Debug defining NDEBUG, disabling debug libraries
-  and turning on whole-program optimisation - a release build that
-  wrote to a different folder, and two of the four ItemDefinitionGroups
-  were duplicated outright. Shared settings are shared here, and the
-  two configurations actually differ.
+  TargetName differs by architecture on purpose: a game that ships
+  both steam_api.dll and steam_api64.dll in one folder needs two
+  cores in that folder, and one filename cannot be both.
 -->
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
@@ -34,25 +28,23 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="core\kryotoo_main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\kryotoo_abi.h" />
-    <ClInclude Include="include\kryotoo_host.h" />
-    <ClInclude Include="include\globals.h" />
+    <ClInclude Include="core\kryotoo_config.h" />
+    <ClInclude Include="core\kryotoo_plugins.h" />
     <ClInclude Include="include\kryoto_plugin.h" />
     <ClInclude Include="include\version.h" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="kryoto_online.rc">
-      <AdditionalIncludeDirectories>$(ProjectDir)include</AdditionalIncludeDirectories>
-    </ResourceCompile>
+    <ResourceCompile Include="core\kryotoo.rc" />
   </ItemGroup>
 
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{2D5F0675-9CC4-4337-B80E-6ECC2C3D4D11}</ProjectGuid>
+    <ProjectGuid>{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>kryoto_online</RootNamespace>
+    <RootNamespace>kryotoO</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
 
@@ -76,21 +68,17 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup Label="UserMacros" />
 
-  <!--
-    The filename IS the crack. A game loads this because it is called
-    what Valve's is called, so the name is not cosmetic and must not
-    drift.
-  -->
+  <!-- x64 keeps the plain name; x86 carries the suffix. -->
   <PropertyGroup>
     <LinkIncremental>false</LinkIncremental>
-    <TargetName Condition="'$(Platform)'=='x64'">steam_api64</TargetName>
-    <TargetName Condition="'$(Platform)'=='Win32'">steam_api</TargetName>
+    <TargetName Condition="'$(Platform)'=='x64'">kryotoO</TargetName>
+    <TargetName Condition="'$(Platform)'=='Win32'">kryotoO32</TargetName>
     <ArchDir Condition="'$(Platform)'=='x64'">x64</ArchDir>
     <ArchDir Condition="'$(Platform)'=='Win32'">x86</ArchDir>
     <BuildRoot Condition="'$(Configuration)'=='Release'">relbuild</BuildRoot>
     <BuildRoot Condition="'$(Configuration)'=='Debug'">debbuild</BuildRoot>
     <OutDir>$(ProjectDir)$(BuildRoot)\$(ArchDir)\</OutDir>
-    <IntDir>$(BuildRoot)\intermediate\$(ArchDir)\</IntDir>
+    <IntDir>$(BuildRoot)\intermediate\kryotoO\$(ArchDir)\</IntDir>
   </PropertyGroup>
 
   <ItemDefinitionGroup>
@@ -100,19 +88,40 @@
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <ControlFlowGuard>Guard</ControlFlowGuard>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)include;$(ProjectDir)include\sdk;$(ProjectDir)include\api;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)include;$(ProjectDir)core;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <!--
-        Statically linked CRT (see the RuntimeLibrary settings below):
-        this file lands in a stranger's game folder, and a /MD build
-        would demand a Visual C++ redistributable they do not have.
-      -->
-      <AdditionalDependencies>Shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>core\kryotoO.def</ModuleDefinitionFile>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
 
+  <!--
+    Statically linked RELEASE CRT (/MT), in both configurations.
+
+    Static because this DLL is dropped into a stranger's game folder,
+    and a /MD build would need a Visual C++ redistributable the player
+    does not have - the failure mode is the game refusing to start with
+    a dialog naming a DLL nobody recognises.
+
+    Release CRT even in Debug because lib/libMinHook.*.lib is a /MT
+    build and there is no debug variant vendored. Building this one
+    /MTd links LIBCMTD and LIBCMT into the same image (LNK4098), which
+    is two CRTs with two heaps in one module - and this module hands
+    allocations across to hooked code.
+
+    Which is also why Debug here defines NDEBUG rather than _DEBUG.
+    _DEBUG makes the CRT headers emit calls into the debug runtime
+    (_CrtDbgReport and friends) that a /MT link cannot resolve, and
+    nothing in this DLL is gated on _DEBUG anyway - the minidump
+    handler that needs it lives in the proxy, which links no MinHook
+    and does get a real /MTd debug build.
+
+    So "Debug" here means a debuggable release: same CRT, same
+    defines, but optimisation off and full PDBs.
+  -->
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
@@ -127,25 +136,32 @@
       <GenerateDebugInformation>false</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-
-  <!--
-    _DEBUG is what turns on the minidump handler in dllmain.cpp. It
-    was never once defined, so the debug build shipped without the
-    single feature that made it a debug build.
-  -->
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- ProgramDatabase, not the Debug default Edit-and-Continue:
            /ZI and /guard:cf cannot both be on, and Control Flow Guard
            is worth more here than an edit-and-continue session on a
            DLL that only ever runs inside somebody else's game. -->
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <!-- Not MultiThreadedDebug: see the comment above this group. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- MinHook is the only external dependency, and only this DLL has it. -->
+  <ItemDefinitionGroup Condition="'$(Platform)'=='x64'">
+    <Link>
+      <AdditionalDependencies>Shlwapi.lib;libMinHook.x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <Link>
+      <AdditionalDependencies>Shlwapi.lib;libMinHook.x86.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 

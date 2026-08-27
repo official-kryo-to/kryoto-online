@@ -3,7 +3,8 @@
 #include <string.h>
 #include <stdio.h>
 
-// Logger from outbound_plugin.cpp (set during KRYOTO_PluginInit).
+// The host logger, handed to this plugin during KRYOTO_PluginInit
+// and owned by the plugin's main translation unit.
 extern "C" void IL2CPP_Log(const char* fmt, ...);
 
 // ============================================================

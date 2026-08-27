@@ -1,145 +1,128 @@
-name: Build and Release DLLs
+name: Release
 
+# Fires on a VERSION BUMP, not on every push.
+#
+# The job reads KRYOTOO_VERSION_STR out of include/version.h and stops
+# unless that version has no tag yet. So the release ritual is: edit the
+# version, write the CHANGELOG entry, push. No tagging by hand, and no
+# accidental release from an unrelated commit.
+#
+# This used to run on every push to master AND on any `v*` tag, naming
+# the release after `github.ref_name`. A push to master is not a tag, so
+# it published a GitHub release literally called `master`, tagged
+# `master`, over and over - which is where the `master` and `test` tags
+# in this repository came from. Kryoto Forge then installed
+# `kryoto-online-master-debug.zip` as if it were a version.
 on:
   push:
-    branches:
-      - master
-    tags:
-      - "v*"
+    branches: [master]
+    paths:
+      - 'include/version.h'
+      - '.github/workflows/release.yml'
+      - '.github/actions/build/action.yml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-release:
-    name: Build and Release
-    runs-on: windows-2022
-
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      needed: ${{ steps.v.outputs.needed }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
-      - name: Check out repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          # Every tag, so the "already released?" check can see them.
+          fetch-depth: 0
 
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Build x86 version (steam_api.dll)
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Release -p:Platform=Win32 -m
-
-      - name: Build x64 version (steam_api64.dll)
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Release -p:Platform=x64 -m      
-        
-      - name: Build x86 version debug (steam_api.dll)
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Debug -p:Platform=Win32 -m
-
-      - name: Build x64 version debug (steam_api64.dll)
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Debug -p:Platform=x64 -m
-
-      - name: Build plugins (x64 release)
-        shell: pwsh
+      - id: v
+        shell: bash
         run: |
-          # Builds every plugins/*/*.vcxproj (Release|x64) so new plugins are
-          # picked up automatically. Release-only: the plugins link the release
-          # libMinHook.x64.lib (no debug variant), and Release is the deliverable.
-          $projs = Get-ChildItem -Path plugins -Recurse -Filter *.vcxproj
-          if (-not $projs) { throw "No plugin projects found under plugins/" }
-          foreach ($p in $projs) {
-            Write-Host "==> $($p.Name) [Release|x64]"
-            msbuild $p.FullName -p:Configuration=Release -p:Platform=x64 -m
-            if ($LASTEXITCODE -ne 0) { throw "Plugin build failed: $($p.Name)" }
-          }
+          version=$(sed -n 's/^#define KRYOTOO_VERSION_STR "\(.*\)"$/\1/p' include/version.h)
+          if [ -z "$version" ]; then
+            echo "::error::No KRYOTOO_VERSION_STR in include/version.h."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Verify build outputs
-        shell: pwsh
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "v$version is already tagged; nothing to release."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Release notes come from the CHANGELOG entry for this version, so
+      # the notes and the file cannot disagree.
+      - id: notes
+        shell: bash
         run: |
-          $files = @(
-            "relbuild/x86/steam_api.dll",
-            "relbuild/x64/steam_api64.dll",
-            "debbuild/x86/steam_api.dll",
-            "debbuild/x64/steam_api64.dll"
-          )
+          node -e '
+            const fs = require("fs");
+            const crypto = require("crypto");
+            const src = fs.readFileSync("include/version.h", "utf8");
+            const version = /#define KRYOTOO_VERSION_STR "(.*)"/.exec(src)[1];
+            const raw = fs.readFileSync("CHANGELOG.md", "utf8");
 
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) {
-              throw "Missing expected build output: $file"
+            let capturing = false;
+            const body = [];
+            for (const line of raw.split(/\r?\n/)) {
+              if (line.startsWith("## ")) {
+                const heading = line.replace(/^##\s+/, "").trim();
+                if (!capturing && (heading.startsWith("[" + version + "]") || heading.startsWith(version))) {
+                  capturing = true;
+                  continue;
+                }
+                if (capturing) break;
+              } else if (capturing) {
+                body.push(line);
+              }
             }
-          }
 
-      - name: Package release zip
-        shell: pwsh
-        run: |
-          $packageRootrel = "dist/kryoto-online-${{ github.ref_name }}-release"
-          $archivePathrel = "$packageRootrel.zip"
+            const text = body.join("\n").trim() || "See CHANGELOG.md for what changed.";
+            const delim = "DELIMITER_" + crypto.randomBytes(8).toString("hex");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `notes<<${delim}\n${text}\n${delim}\n`);
+          '
 
-          New-Item -ItemType Directory -Path "$packageRootrel/x86" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRootrel/x64" -Force | Out-Null
+  release:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
 
-          Copy-Item "relbuild/x86/steam_api.dll" "$packageRootrel/x86/steam_api.dll"
-          Copy-Item "relbuild/x64/steam_api64.dll" "$packageRootrel/x64/steam_api64.dll"
-
-          New-Item -ItemType Directory -Path "$packageRootrel/plugins" -Force | Out-Null
-          Get-ChildItem -Path plugins -Recurse -Filter *.dll |
-            Where-Object { ($_.FullName -replace '\\','/') -match '/relbuild/x64/' } |
-            ForEach-Object { Copy-Item $_.FullName "$packageRootrel/plugins/$($_.Name)" -Force }
-
-          # Photon auto-patcher: ship patch.bat + a copy of the plugin DLL at the
-          # package root so users can drop a game folder onto it from the release.
-          if (Test-Path "patch.bat") {
-            Copy-Item "patch.bat" "$packageRootrel/patch.bat" -Force
-            Copy-Item "plugins/photon_universal/relbuild/x64/photon_universal.dll" "$packageRootrel/photon_universal.dll" -Force
-          }
-
-          if (Test-Path $archivePathrel) {
-            Remove-Item $archivePathrel -Force
-          }
-
-          Compress-Archive -Path $packageRootrel -DestinationPath $archivePathrel
-
-      - name: Package debug zip
-        shell: pwsh
-        run: |
-          $packageRootdeb = "dist/kryoto-online-${{ github.ref_name }}-debug"
-          $archivePathdeb = "$packageRootdeb.zip"
-
-          New-Item -ItemType Directory -Path "$packageRootdeb/x86" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRootdeb/x64" -Force | Out-Null
-
-          Copy-Item "debbuild/x86/steam_api.dll" "$packageRootdeb/x86/steam_api.dll"
-          Copy-Item "debbuild/x64/steam_api64.dll" "$packageRootdeb/x64/steam_api64.dll"
-
-          # Plugins are built Release-only; bundle the same release DLLs here too.
-          New-Item -ItemType Directory -Path "$packageRootdeb/plugins" -Force | Out-Null
-          Get-ChildItem -Path plugins -Recurse -Filter *.dll |
-            Where-Object { ($_.FullName -replace '\\','/') -match '/relbuild/x64/' } |
-            ForEach-Object { Copy-Item $_.FullName "$packageRootdeb/plugins/$($_.Name)" -Force }
-
-          if (Test-Path $archivePathdeb) {
-            Remove-Item $archivePathdeb -Force
-          }
-
-          Compress-Archive -Path $packageRootdeb -DestinationPath $archivePathdeb
+      - id: build
+        uses: ./.github/actions/build
+        with:
+          label: v${{ needs.check.outputs.version }}
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-${{ github.ref_name }}-release
-          path: dist/kryoto-online-${{ github.ref_name }}-release.zip
+          name: kryoto-online-v${{ needs.check.outputs.version }}-release
+          path: ${{ steps.build.outputs.release-zip }}
           if-no-files-found: error
 
       - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-${{ github.ref_name }}-debug
-          path: dist/kryoto-online-${{ github.ref_name }}-debug.zip
+          name: kryoto-online-v${{ needs.check.outputs.version }}-debug
+          path: ${{ steps.build.outputs.debug-zip }}
           if-no-files-found: error
 
-      - name: Publish release assets
+      # Creates the tag as well - nothing tags by hand.
+      - name: Publish the release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: v${{ needs.check.outputs.version }}
+          name: KryotoOnline v${{ needs.check.outputs.version }}
+          body: ${{ needs.check.outputs.notes }}
           files: |
-            dist/kryoto-online-${{ github.ref_name }}-release.zip
-            dist/kryoto-online-${{ github.ref_name }}-debug.zip
-          generate_release_notes: true
+            ${{ steps.build.outputs.release-zip }}
+            ${{ steps.build.outputs.debug-zip }}
+          draft: false
+          prerelease: false
           fail_on_unmatched_files: true

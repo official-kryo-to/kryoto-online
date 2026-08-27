@@ -1,11 +1,11 @@
-/**
- *  All of the interfaces, exports found in the real dlls, namespaces,
- *  functions, you name it. This is kinda necessary, and also really
- *  touchy. So try to be careful here, if you even look at it sideways
- *  it'll take that as a sign to just throw the whole build process lol.
- *
- *  ~veeλnti<3 2026
- */
+// The shared state of the proxy: the interfaces resolved out of the
+// real steamclient, the handles they were resolved with, and the
+// stub implementations for the few things that are answered locally
+// rather than forwarded (DLC ownership, emulated auth tickets).
+//
+// Nearly every api/*.h reads something declared here, so an edit lands
+// in one translation unit that is already 2000 functions wide. Check
+// what else touches a name before changing its type.
 
 #pragma once
 
@@ -539,13 +539,15 @@ void KryotoColor(WORD color, const char* text);
 void* InitSteamClient(HMODULE* phModule, bool bLocal, const char* iface);
 void LoadBreakpadSymbols(HMODULE hMod);
 void UpdateMinidumpSteamID(uint64 sid);
-void InstallSteamSpoofHooks();
-
 // Plugin callback patcher registry. KRYOTO_CallbackPatcherFn is declared
 // in include/kryoto_plugin.h which must be included before this header.
+//
+// The registry lives on THIS side of the core/proxy split because the
+// callback dispatcher does: a patcher runs on a callback that has
+// already been pulled off the client pipe by code in this DLL.
 void KRYOTO_RegisterCallbackPatcher(int iCallback, KRYOTO_CallbackPatcherFn fn);
 
-// Defined in dllmain.cpp; api_client.h calls InitPlugins() on it
-// after SteamAPI_Init succeeds.
-class CDLLLoader;
-extern CDLLLoader s_PluginLoader;
+// Defined in dllmain.cpp. api_client.h reaches for it once SteamAPI_Init
+// has resolved the interfaces the spoof hooks need.
+class CKryotoCore;
+extern CKryotoCore s_Core;

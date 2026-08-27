@@ -1,11 +1,13 @@
-/**
- *  The heavy lifter of this and how multiplayer games work on Steam in general.
- *  This is the class that handles all of the callbacks, and also the call results.
- *  Matchmaking, lobby creation & handling, server list retrieval, all of that is
- *  done through here. Without the dispatcher, none of these things would work.
- *
- *  ~veeλnti<3 2026
- */
+// Steam's callback and call-result plumbing.
+//
+// Every asynchronous answer a multiplayer game waits on arrives through
+// here: matchmaking results, lobby create/join, the server list. The
+// game registers a CCallback, the client pipe produces a CallbackMsg_t,
+// and this maps one onto the other. Nothing that waits on Steam works
+// without it.
+//
+// Plugins can register a patcher against an iCallback to mutate a
+// message before the game sees it - see include/kryoto_plugin.h.
 
 #pragma once
 

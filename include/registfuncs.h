@@ -1,13 +1,13 @@
-/**
- *  This may cause antiviruses to shit huge ass cinderblocks, but oh well.
- *  It is genuinely only to find where Steam is installed to get to the
- *  steamclient(64).dll file, since when you install it, it always adds
- *  the path to your registry. I wish it would just add it to PATH or do
- *  that too so I could get around that possible malware flag, but hey.
- *  Life ain't fair, now is it? lol.
- *
- *  ~veeλnti<3 2026
- */
+// Two registry readers, used for exactly one thing: finding where Steam
+// is installed so steamclient(64).dll can be loaded from it.
+//
+// The client records its own path under HKCU on install and puts it
+// nowhere else - not on PATH, not anywhere a normal file search would
+// reach - so reading the registry is the only way to locate it.
+//
+// Heuristic antivirus does flag registry reads from an injected DLL.
+// There is no way around it short of not finding Steam at all, which
+// would mean not working.
 #pragma once
 
 #include <Windows.h>

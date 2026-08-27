@@ -4,6 +4,15 @@ VisualStudioVersion = 17.14.34016.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kryoto_online", "kryoto_online.vcxproj", "{2D5F0675-9CC4-4337-B80E-6ECC2C3D4D11}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kryotoO", "kryotoO.vcxproj", "{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}"
+EndProject
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "photon_universal", "plugins\photon_universal\photon_universal_plugin.vcxproj", "{35442763-FBC4-4F47-AEC6-7070F00398CB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "raft_mp", "plugins\raft_mp\raft_mp_plugin.vcxproj", "{15975F7C-AC25-4841-A757-726A7365FF42}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "unity_auth_bypass", "plugins\unity_auth_bypass\unity_auth_bypass_plugin.vcxproj", "{41D93762-0D8F-4038-9A69-7BB4734FA094}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Win32 = Release|Win32
@@ -20,6 +29,29 @@ Global
 		{2D5F0675-9CC4-4337-B80E-6ECC2C3D4D11}.Debug|Win32.Build.0 = Debug|Win32
 		{2D5F0675-9CC4-4337-B80E-6ECC2C3D4D11}.Debug|x64.ActiveCfg = Debug|x64
 		{2D5F0675-9CC4-4337-B80E-6ECC2C3D4D11}.Debug|x64.Build.0 = Debug|x64
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Release|Win32.ActiveCfg = Release|Win32
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Release|Win32.Build.0 = Release|Win32
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Release|x64.ActiveCfg = Release|x64
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Release|x64.Build.0 = Release|x64
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Debug|Win32.ActiveCfg = Debug|Win32
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Debug|Win32.Build.0 = Debug|Win32
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Debug|x64.ActiveCfg = Debug|x64
+		{7F1B0C42-58A1-4E0B-9F3D-2C7A6B4E8D19}.Debug|x64.Build.0 = Debug|x64
+		{35442763-FBC4-4F47-AEC6-7070F00398CB}.Release|x64.ActiveCfg = Release|x64
+		{35442763-FBC4-4F47-AEC6-7070F00398CB}.Release|x64.Build.0 = Release|x64
+		{35442763-FBC4-4F47-AEC6-7070F00398CB}.Release|Win32.ActiveCfg = Release|x64
+		{35442763-FBC4-4F47-AEC6-7070F00398CB}.Debug|x64.ActiveCfg = Release|x64
+		{35442763-FBC4-4F47-AEC6-7070F00398CB}.Debug|Win32.ActiveCfg = Release|x64
+		{15975F7C-AC25-4841-A757-726A7365FF42}.Release|x64.ActiveCfg = Release|x64
+		{15975F7C-AC25-4841-A757-726A7365FF42}.Release|x64.Build.0 = Release|x64
+		{15975F7C-AC25-4841-A757-726A7365FF42}.Release|Win32.ActiveCfg = Release|x64
+		{15975F7C-AC25-4841-A757-726A7365FF42}.Debug|x64.ActiveCfg = Release|x64
+		{15975F7C-AC25-4841-A757-726A7365FF42}.Debug|Win32.ActiveCfg = Release|x64
+		{41D93762-0D8F-4038-9A69-7BB4734FA094}.Release|x64.ActiveCfg = Release|x64
+		{41D93762-0D8F-4038-9A69-7BB4734FA094}.Release|x64.Build.0 = Release|x64
+		{41D93762-0D8F-4038-9A69-7BB4734FA094}.Release|Win32.ActiveCfg = Release|x64
+		{41D93762-0D8F-4038-9A69-7BB4734FA094}.Debug|x64.ActiveCfg = Release|x64
+		{41D93762-0D8F-4038-9A69-7BB4734FA094}.Debug|Win32.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

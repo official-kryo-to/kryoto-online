@@ -1,6 +1,8 @@
 # Build output
 build/
 relbuild/
+debbuild/
+dist/
 x64/
 Debug/
 Release/

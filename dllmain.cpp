@@ -23,9 +23,8 @@ S_API ISteamClient* g_pSteamClientGameServer = nullptr;
 #include "include/callback_dispatcher.h"
 #include "include/kryoto_plugin.h"
 #include "include/globals.h"
-#include "include/kryoto_loader.h"
+#include "include/kryotoo_host.h"
 #include "include/dump_handler.h"
-#include "include/MinHook.h"
 
 #include "include/api/api_callbacks.h"
 #include "include/api/api_client.h"
@@ -93,10 +92,6 @@ Fn_BreakpadSetComment g_pfnBreakpadSetComment = nullptr;
 Fn_BreakpadWriteDump g_pfnBreakpadWriteDump = nullptr;
 
 uintp g_CtxCounter = 0;
-
-// Forward declarations for SteamStub
-static bool g_bSteamStubEnabled = false;
-static void SteamStub_Init();
 
 // ============================================================
 // SteamInternal_ContextInit
@@ -173,8 +168,16 @@ void KryotoColor(WORD color, const char* text)
 }
 
 // ============================================================
-// InitSteamClient // I seriously broke this later on in the
-//				   // releases, I am SO SORRY ya'll!!
+// InitSteamClient
+//
+// Load the real steamclient and get one interface out of it.
+//
+// The install path comes from the registry (include/registfuncs.h).
+// When Steam is not running, or the path is unusable, the fallback is
+// a plain LoadLibrary by name - which only finds anything if a
+// steamclient happens to sit beside the game, and is why `bLocal`
+// exists: a caller that cannot use a local client says so and gets
+// null instead of a surprise.
 // ============================================================
 
 void* InitSteamClient(HMODULE* phMod, bool bLocal, const char* iface)
@@ -298,10 +301,10 @@ static void LoadGameOverlay()
 // DllMain
 // ============================================================
 
-// File-scope so the SteamAPI_Init path in api_client.h can call
-// InitPlugins() on it, and DLL_PROCESS_DETACH can call
-// ShutdownPlugins().
-CDLLLoader s_PluginLoader;
+// File-scope so the SteamAPI_Init path in api_client.h can reach it:
+// that is where the Steam interfaces the spoof hooks need finally
+// exist, and where the plugin context is built.
+CKryotoCore s_Core;
 
 BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
@@ -309,9 +312,13 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 	{
 		KRYOTOLOG("[KryotoOnline] DllMain -> DLL_PROCESS_ATTACH");
 
-		s_PluginLoader.ReadConfig();
-		g_ForcedAppId = s_PluginLoader.GetAppId();
-		g_OriginalAppId = s_PluginLoader.GetOgAppId();
+		// Before anything reads g_ForcedAppId: SetAppIDEnv and
+		// WriteAppIDFile below both publish it, and the overlay is
+		// loaded off the back of it.
+		s_Core.Load(hModule, &KRYOTOLOG);
+		const KryotoO_Config& cfg = s_Core.Config();
+		g_ForcedAppId = cfg.AppId;
+		g_OriginalAppId = cfg.OgAppId;
 
 		SetAppIDEnv();
 		WriteAppIDFile();
@@ -330,8 +337,10 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 
 		KRYOTOLOG("[KryotoOnline] DLL Path: %s", dllPath);
 
-		// The actual likelihood of this being used or even working is low, as it wouldn't even work if it were named anything else.
-		// However, I'm positive that compiling without this will cause it to scream at me and I no no like that. It make me maaaad.
+		// A game loads this because of its FILENAME - nothing else
+		// about it says Steamworks. Renamed, it is inert, and the
+		// symptom is a game that behaves as though no crack was
+		// applied at all. One line in the log beats guessing.
 		#if defined(_M_IX86)
 			if (!StrStrIA(dllPath, "steam_api.dll"))
 				KRYOTOLOG("[KryotoOnline] Warning: not named steam_api.dll");
@@ -350,34 +359,34 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		g_pDumpHandler = new CDumpHandler();
 		#endif
 
-		s_PluginLoader.LoadPlugins();
+		// Here, not inside the core's startup call: a plugin's DllMain runs
+		// inside this, and plugins have always been loaded at a point where
+		// SteamAppId is already in the environment, steam_appid.txt is
+		// written and the locks above exist.
+		s_Core.LoadPlugins();
 
-		KRYOTOLOG("[KryotoOnline] %zu plugin(s) loaded", s_PluginLoader.LoadedCount());
-
-		g_bSteamStubEnabled = s_PluginLoader.GetSteamStubEnabled();
-		if (g_bSteamStubEnabled)
-		{
-			SteamStub_Init();
-		}
-
-		std::vector<uint32> unlockedDLC = s_PluginLoader.GetUnlockDLCAppIds();
+		// DLC unlocking and ticket emulation are answers this DLL
+		// gives to game calls, not patches, so they stay on this
+		// side of the split - the core only reads them out of the
+		// ini and hands them over.
+		std::vector<uint32> unlockedDLC;
+		if (cfg.Dlc && cfg.DlcCount)
+			unlockedDLC.assign(cfg.Dlc, cfg.Dlc + cfg.DlcCount);
 		CSteamAppsStub::SetUnlockedDLCAppIds(unlockedDLC);
 
-		if (s_PluginLoader.GetEmulateTicketEnabled()) {
-			uint32 emulatedAppId = s_PluginLoader.GetOgAppId();
-			if (emulatedAppId == 0) emulatedAppId = s_PluginLoader.GetAppId();
+		if (cfg.EmulateTicket)
+		{
+			// Tickets are minted for the REAL title. Falling back to
+			// AppId keeps an ogAppId-less config working rather than
+			// emitting a ticket for app 0.
+			uint32 emulatedAppId = cfg.OgAppId != 0 ? cfg.OgAppId : cfg.AppId;
 			CSteamUserStub::SetEmulatedApp(emulatedAppId);
 		}
 	}
 	else if (dwReason == DLL_PROCESS_DETACH)
 	{
 		KRYOTOLOG("[KryotoOnline] DllMain -> DLL_PROCESS_DETACH");
-		s_PluginLoader.ShutdownPlugins();
-		if (g_bSteamStubEnabled)
-		{
-			MH_DisableHook(reinterpret_cast<LPVOID*>(GetTickCount));
-			MH_Uninitialize();
-		}
+		s_Core.Shutdown();
 	}
 
 	return TRUE;
@@ -902,202 +911,3 @@ void CDumpHandler::WriteDump(DWORD exceptionCode, _EXCEPTION_POINTERS* pExceptio
 	ReleaseSRWLockExclusive(&m_Lock);
 }
 #endif
-
-/**
- *  SteamStubbed, credits to DenuvoSanctuary for the original code for this.
- *  Originally written in Rust, rewritten here in C++ to integrate it.
- */
-#include <intrin.h>
-#include "include/MinHook.h"
-#include <atomic>
-
-static std::atomic<uint32_t> g_SteamStubCount{ 0 };
-static constexpr uint32_t STEAM_STUB_MAX_COUNT = 1;
-static constexpr uint8_t STEAM_STUB_SIGNATURE[] = { 0x44, 0x0F, 0xB6, 0xF8, 0x3C, 0x30, 0x0F, 0x84 };
-
-typedef DWORD(WINAPI* GetTickCount_t)(void);
-static GetTickCount_t g_OrigGetTickCount = nullptr;
-
-static uint8_t* SteamStub_FindSignature(uint8_t* start, uint8_t* end, const uint8_t* sig, size_t sigLen)
-{
-	for (uint8_t* p = start; p < end - sigLen; ++p)
-	{
-		bool match = true;
-		for (size_t i = 0; i < sigLen; ++i)
-		{
-			if (p[i] != sig[i])
-			{
-				match = false;
-				break;
-			}
-		}
-		if (match)
-			return p;
-	}
-	return nullptr;
-}
-
-static DWORD WINAPI SteamStub_HookGetTickCount(void)
-{
-	uint8_t* returnAddr = reinterpret_cast<uint8_t*>(_ReturnAddress());
-
-	uint8_t* start = returnAddr;
-	uint8_t* end = start + 128;
-
-	DWORD oldProtect = 0;
-	if (!VirtualProtect(start, static_cast<SIZE_T>(end - start), PAGE_EXECUTE_READWRITE, &oldProtect))
-	{
-		return g_OrigGetTickCount();
-	}
-
-	uint8_t* found = SteamStub_FindSignature(start, end, STEAM_STUB_SIGNATURE, sizeof(STEAM_STUB_SIGNATURE));
-	if (found)
-	{
-		found[7] = 0x85;
-
-		uint32_t count = g_SteamStubCount.fetch_add(1, std::memory_order_seq_cst) + 1;
-		if (count >= STEAM_STUB_MAX_COUNT)
-		{
-			MH_DisableHook(reinterpret_cast<LPVOID*>(GetTickCount));
-		}
-	}
-
-	VirtualProtect(start, static_cast<SIZE_T>(end - start), oldProtect, &oldProtect);
-
-	return g_OrigGetTickCount();
-}
-
-// ============================================================
-// Generic Steam-side spoof hooks
-//
-// These are kept in core because they apply uniformly to any
-// ogAppId-spoofed setup -- they don't carry per-game logic.
-// Game-specific behaviors (auth ticket synthesis, EOS bypass,
-// etc.) live in plugins; see include/kryoto_plugin.h and the
-// reference Outbound plugin under plugins/outbound/.
-// ============================================================
-
-typedef uint32 (S_CALLTYPE *Fn_GetAppID)(void* pThis);
-typedef bool   (S_CALLTYPE *Fn_BIsSubscribedApp)(void* pThis, AppId_t appID);
-
-static Fn_GetAppID         g_pfnOriginalGetAppID         = nullptr;
-static Fn_BIsSubscribedApp g_pfnOriginalBIsSubscribedApp = nullptr;
-static bool                g_bGetAppIDLoggedFirst        = false;
-static bool                g_bSubscribedLoggedFirst      = false;
-
-// Many games gate multiplayer behind "do you actually own this AppId?"
-// via ISteamApps::BIsSubscribedApp(GetAppID()). Real Steam answers
-// false because the user owns Spacewar (480), not the real AppId.
-// Return true for the ogAppId.
-static bool S_CALLTYPE Hooked_BIsSubscribedApp(void* pThis, AppId_t appID)
-{
-    bool original = g_pfnOriginalBIsSubscribedApp(pThis, appID);
-    if (g_OriginalAppId != 0 && appID == g_OriginalAppId && !original)
-    {
-        if (!g_bSubscribedLoggedFirst)
-        {
-            KRYOTOLOG("[KryotoOnline] BIsSubscribedApp(%u) hook returning true (Steam says false)", appID);
-            g_bSubscribedLoggedFirst = true;
-        }
-        return true;
-    }
-    return original;
-}
-
-// Make ISteamUtils::GetAppID() report ogAppId so the rest of the
-// game stack agrees on the "real" AppId (matches the way OnlineFix
-// exposes RealAppId via the same interface).
-static uint32 S_CALLTYPE Hooked_GetAppID(void* pThis)
-{
-    uint32 original = g_pfnOriginalGetAppID(pThis);
-    if (g_OriginalAppId == 0 || g_OriginalAppId == g_ForcedAppId)
-        return original;
-
-    if (!g_bGetAppIDLoggedFirst)
-    {
-        KRYOTOLOG("[KryotoOnline] GetAppID hook returning ogAppId=%u (Steam reports %u)",
-            g_OriginalAppId, original);
-        g_bGetAppIDLoggedFirst = true;
-    }
-    return g_OriginalAppId;
-}
-
-void InstallSteamSpoofHooks()
-{
-    if (g_OriginalAppId == 0 || g_OriginalAppId == g_ForcedAppId)
-    {
-        KRYOTOLOG("[KryotoOnline] Skipping spoof hooks: no ogAppId or same as AppId");
-        return;
-    }
-
-    if (!g_bClientReady)
-    {
-        KRYOTOLOG("[KryotoOnline] Cannot install spoof hooks: client not ready");
-        return;
-    }
-
-    MH_Initialize();
-
-    // ISteamUtils vtable: [9] = GetAppID.
-    //   0:GetSecondsSinceAppActive  1:GetSecondsSinceComputerActive
-    //   2:GetConnectedUniverse  3:GetServerRealTime  4:GetIPCountry
-    //   5:GetImageSize  6:GetImageRGBA  7:GetCSERIPPort (private but
-    //   present in vtable)  8:GetCurrentBatteryPower  9:GetAppID
-    if (g_ClientCtx.SteamUtils())
-    {
-        void** utilsVT = *reinterpret_cast<void***>(g_ClientCtx.SteamUtils());
-        void* pGetAppIDFn = utilsVT[9];
-        MH_STATUS s = MH_CreateHook(pGetAppIDFn, &Hooked_GetAppID,
-            reinterpret_cast<void**>(&g_pfnOriginalGetAppID));
-        if (s == MH_OK)
-        {
-            if (MH_EnableHook(pGetAppIDFn) == MH_OK)
-                KRYOTOLOG("[KryotoOnline] GetAppID hook installed (will return %u)", g_OriginalAppId);
-            else
-                KRYOTOLOG("[KryotoOnline] MH_EnableHook failed for GetAppID");
-        }
-        else
-        {
-            KRYOTOLOG("[KryotoOnline] MH_CreateHook failed for GetAppID: %d", s);
-        }
-    }
-
-    // ISteamApps vtable: [6] = BIsSubscribedApp.
-    //   0:BIsSubscribed  1:BIsLowViolence  2:BIsCybercafe  3:BIsVACBanned
-    //   4:GetCurrentGameLanguage  5:GetAvailableGameLanguages
-    //   6:BIsSubscribedApp
-    if (g_ClientCtx.SteamApps())
-    {
-        void** appsVT = *reinterpret_cast<void***>(g_ClientCtx.SteamApps());
-        void* pSubscribedFn = appsVT[6];
-        MH_STATUS s = MH_CreateHook(pSubscribedFn, &Hooked_BIsSubscribedApp,
-            reinterpret_cast<void**>(&g_pfnOriginalBIsSubscribedApp));
-        if (s == MH_OK)
-        {
-            if (MH_EnableHook(pSubscribedFn) == MH_OK)
-                KRYOTOLOG("[KryotoOnline] BIsSubscribedApp hook installed");
-            else
-                KRYOTOLOG("[KryotoOnline] MH_EnableHook failed for BIsSubscribedApp");
-        }
-        else
-        {
-            KRYOTOLOG("[KryotoOnline] MH_CreateHook failed for BIsSubscribedApp: %d", s);
-        }
-    }
-}
-
-static void SteamStub_Init()
-{
-	if (MH_Initialize() != MH_OK)
-		return;
-
-	void* pTarget = reinterpret_cast<void*>(GetTickCount);
-
-	if (MH_CreateHook(pTarget, SteamStub_HookGetTickCount, reinterpret_cast<LPVOID*>(&g_OrigGetTickCount)) != MH_OK)
-		return;
-
-	if (MH_EnableHook(pTarget) != MH_OK)
-		return;
-
-	KRYOTOLOG("[KryotoOnline] SteamStub hook initialized");
-}

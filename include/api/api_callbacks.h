@@ -318,7 +318,15 @@ S_API HSteamUser S_CALLTYPE Steam_GetHSteamUserCurrent()
 {
 	KRYOTOLOG("[KryotoOnline] Steam_GetHSteamUserCurrent\r\n");
 
-	return ::Steam_GetHSteamUserCurrent();
+	// `::Steam_GetHSteamUserCurrent()` resolved to THIS function - the
+	// global scope it names is our own export table, not steamclient's -
+	// so every call recursed until the stack ran out. MSVC has been
+	// saying so on every build (C4717) and the warning went unread.
+	//
+	// The answer is the handle we already hold, which is what the
+	// GetHSteamUser and SteamAPI_GetHSteamUser exports beside this one
+	// return. Zero before SteamAPI_Init, exactly as they are.
+	return g_ClientUser;
 }
 
 S_API void S_CALLTYPE Steam_RegisterInterfaceFuncs(void* hModule)

@@ -1,94 +1,50 @@
 name: Pull Request Build
 
+# The same build the release runs, minus the publishing. It shares the
+# composite action rather than repeating it, so a step added to one is
+# not quietly missing from the other.
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    name: Build DLLs
+    name: Build and test
     runs-on: windows-2022
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
+      - id: build
+        uses: ./.github/actions/build
+        with:
+          label: pr
 
-      - name: Build release Win32 DLL
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Release -p:Platform=Win32 -m
-
-      - name: Build release x64 DLL
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Release -p:Platform=x64 -m
-
-      - name: Build debug Win32 DLL
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Debug -p:Platform=Win32 -m
-
-      - name: Build debug x64 DLL
-        run: msbuild kryoto_online.vcxproj -p:Configuration=Debug -p:Platform=x64 -m
-
-      - name: Verify build outputs
-        shell: pwsh
+      # A version bump in a PR is what will trigger a release the moment
+      # it merges, so it is worth saying out loud in the checks rather
+      # than discovering it from a surprise GitHub release.
+      - name: Report the release this would cut
+        shell: bash
         run: |
-          $files = @(
-            "relbuild/x86/steam_api.dll",
-            "relbuild/x64/steam_api64.dll",
-            "debbuild/x86/steam_api.dll",
-            "debbuild/x64/steam_api64.dll"
-          )
+          version=$(sed -n 's/^#define KRYOTOO_VERSION_STR "\(.*\)"$/\1/p' include/version.h)
+          echo "include/version.h says $version"
+          if git ls-remote --tags --exit-code origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "::notice::v$version is already released. Merging this will NOT cut a release."
+          else
+            echo "::notice::v$version has no tag yet. Merging this to master WILL cut a release - make sure CHANGELOG.md has a $version section."
+          fi
 
-          foreach ($file in $files) {
-            if (-not (Test-Path $file)) {
-              throw "Missing expected build output: $file"
-            }
-          }
-            
-      - name: Package release zip
-        shell: pwsh
-        run: |
-          $packageRoot = "dist/kryoto-online-pr.release"
-          $archivePath = "$packageRoot.zip"
-
-          New-Item -ItemType Directory -Path "$packageRoot/x86" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRoot/x64" -Force | Out-Null
-
-          Copy-Item "relbuild/x86/steam_api.dll" "$packageRoot/x86/steam_api.dll"
-          Copy-Item "relbuild/x64/steam_api64.dll" "$packageRoot/x64/steam_api64.dll"
-
-          if (Test-Path $archivePath) {
-            Remove-Item $archivePath -Force
-          }
-
-          Compress-Archive -Path $packageRoot -DestinationPath $archivePath
-
-      - name: Package debug zip
-        shell: pwsh
-        run: |
-          $packageRootdeb = "dist/kryoto-online-pr.debug"
-          $archivePathdeb = "$packageRootdeb.zip"
-
-          New-Item -ItemType Directory -Path "$packageRootdeb/x86" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$packageRootdeb/x64" -Force | Out-Null
-
-          Copy-Item "debbuild/x86/steam_api.dll" "$packageRootdeb/x86/steam_api.dll"
-          Copy-Item "debbuild/x64/steam_api64.dll" "$packageRootdeb/x64/steam_api64.dll"
-
-          if (Test-Path $archivePathdeb) {
-            Remove-Item $archivePathdeb -Force
-          }
-
-          Compress-Archive -Path $packageRootdeb -DestinationPath $archivePathdeb
-
-      - name: Upload workflow release artifact
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-pr.release
-          path: dist/kryoto-online-pr.release.zip
+          name: kryoto-online-pr-release
+          path: ${{ steps.build.outputs.release-zip }}
           if-no-files-found: error
 
-      - name: Upload workflow debug artifact
+      - name: Upload debug artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kryoto-online-pr.debug
-          path: dist/kryoto-online-pr.debug.zip
+          name: kryoto-online-pr-debug
+          path: ${{ steps.build.outputs.debug-zip }}
           if-no-files-found: error

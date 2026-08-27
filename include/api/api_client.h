@@ -321,7 +321,10 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 						KRYOTOLOG("[KryotoOnline] probe FAIL: %s -> nullptr\r\n", probes[i].name);
 				}
 
-				InstallSteamSpoofHooks();
+				// Now, not at DLL_PROCESS_ATTACH: these hook vtable
+				// slots on the live client's interfaces, and those
+				// objects do not exist until this call resolved them.
+				s_Core.InstallSpoofHooks(g_ClientCtx.SteamUtils(), g_ClientCtx.SteamApps());
 
 				// Build the plugin context now that Steam interfaces
 				// are resolved, then let each plugin install its
@@ -341,7 +344,7 @@ S_API ESteamAPIInitResult S_CALLTYPE SteamInternal_SteamAPI_Init(const char* psz
 				ctx.HSteamPipe       = g_ClientPipe;
 				ctx.Log              = &KRYOTOLOG;
 				ctx.RegisterCallbackPatcher = &KRYOTO_RegisterCallbackPatcher;
-				s_PluginLoader.InitPlugins(&ctx);
+				s_Core.InitPlugins(&ctx);
 
 				return k_ESteamAPIInitResult_OK;
 			}
