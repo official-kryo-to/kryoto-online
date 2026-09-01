@@ -646,7 +646,7 @@ static bool TryInstall()
     uint8_t* site = (uint8_t*)ga + kPatchRva;
     const uint8_t kExpected[6] = { 0x0F, 0x84, 0xC3, 0x06, 0x00, 0x00 };
     if (memcmp(site, kExpected, 6) != 0) {
-        // Not Phasmo build 23249745 — silent skip (most games hit this branch).
+        // Not Phasmo build 23249745 - silent skip (most games hit this branch).
         return false;
     }
     DWORD oldProt = 0;
@@ -675,7 +675,7 @@ static volatile LONG g_PhasmoGate_Done     = 0;
 
 static void RunDetectionPass()
 {
-    // Phasmo gate is byte-pattern — try at any time once GameAssembly is loaded.
+    // Phasmo gate is byte-pattern - try at any time once GameAssembly is loaded.
     if (!InterlockedCompareExchange(&g_PhasmoGate_Done, 0, 0)) {
         if (ModPhasmoGate::TryInstall())
             InterlockedExchange(&g_PhasmoGate_Done, 1);
