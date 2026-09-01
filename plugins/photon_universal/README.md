@@ -2,15 +2,15 @@
 
 **One DLL that handles every Photon multiplayer path KryotoOnline supports.**
 
-This is the consolidated "mega" plugin. It replaces the old per-flavor plugins (`photon_realtime`, `photon_realtime_mono`, `photon_fusion`) with a single DLL that **auto-detects** the game's setup at launch and installs only the relevant hooks. You no longer pick a plugin per game — drop this one in and it figures out the rest.
+This is the consolidated "mega" plugin. It replaces the old per-flavor plugins (`photon_realtime`, `photon_realtime_mono`, `photon_fusion`) with a single DLL that **auto-detects** the game's setup at launch and installs only the relevant hooks. You no longer pick a plugin per game - drop this one in and it figures out the rest.
 
 It covers:
 
-- **Photon Realtime / PUN** — IL2CPP *and* Mono scripting backends
-- **Photon Fusion 2** — IL2CPP
-- **Photon Voice** — paired with a Realtime/PUN connection
-- **Unity Services auth bypass** — `SignInWithSteam` → anonymous
-- **Phasmophobia SteamAuth gate NOP** — game-specific byte-signature patch
+- **Photon Realtime / PUN** - IL2CPP *and* Mono scripting backends
+- **Photon Fusion 2** - IL2CPP
+- **Photon Voice** - paired with a Realtime/PUN connection
+- **Unity Services auth bypass** - `SignInWithSteam` → anonymous
+- **Phasmophobia SteamAuth gate NOP** - game-specific byte-signature patch
 
 At init the plugin detects the Unity backend (Mono vs IL2CPP) by which runtime DLL is loaded, the Photon flavor (Realtime/PUN vs Fusion) by metadata/assembly scan, and the Phasmo gate by byte signature in `GameAssembly.dll`. Modules that don't apply are simply never installed.
 
@@ -25,23 +25,23 @@ At init the plugin detects the Unity backend (Mono vs IL2CPP) by which runtime D
 
 | Game | Steam AppId | Backend / flavor | Notes |
 |---|---|---|---|
-| **R.E.P.O.** | 3241660 | Mono · Realtime/PUN + Voice | Needs **two** Photon apps (one Realtime + one Voice). Voice slot is mandatory — Photon's NameServer rejects the connection if the Voice AppId still holds the dev's GUID. |
-| **PEAK** | 3527290 | Mono · Realtime/PUN + Voice | Same shape as R.E.P.O. — PUN + proximity-chat Voice, so both a Realtime and a Voice app are required. Steam-friends-invite co-op. |
+| **R.E.P.O.** | 3241660 | Mono · Realtime/PUN + Voice | Needs **two** Photon apps (one Realtime + one Voice). Voice slot is mandatory - Photon's NameServer rejects the connection if the Voice AppId still holds the dev's GUID. |
+| **PEAK** | 3527290 | Mono · Realtime/PUN + Voice | Same shape as R.E.P.O. - PUN + proximity-chat Voice, so both a Realtime and a Voice app are required. Steam-friends-invite co-op. |
 | **Phasmophobia** | 739630 | IL2CPP · Realtime/PUN | The built-in Phasmo SteamAuth gate NOP fires automatically (byte signature in `GameAssembly.dll`), NOPing the Beebyte-obfuscated ticket-verify gate that would otherwise block before Photon is reached. |
 | **Outbound** | 2681030 | IL2CPP · Fusion 2 | First Fusion target; works asset-patch-free at runtime. |
 
 ## How multiplayer auth is bypassed
 
-Photon-backed games normally authenticate with a Steam ticket validated against the *developer's* publisher key — which you don't have. The fix has two parts:
+Photon-backed games normally authenticate with a Steam ticket validated against the *developer's* publisher key - which you don't have. The fix has two parts:
 
-1. **Redirect the game to a Photon app you control** by rewriting the Photon AppId GUID on the wire at runtime (no asset patching needed — see below).
+1. **Redirect the game to a Photon app you control** by rewriting the Photon AppId GUID on the wire at runtime (no asset patching needed - see below).
 2. **Point that Photon app at a permissive Custom Authentication URL** (a Cloudflare Worker that always replies success), and force the wire-time auth type to `Custom`.
 
 Both Photon's master/NameServer then accept the client without a real publisher key.
 
 ## Setup
 
-Setup is asset-patch-free — the plugin reads everything from `kryoto-online.ini` and rewrites AppIds on the wire at runtime, so you never modify the game's `resources.assets`.
+Setup is asset-patch-free - the plugin reads everything from `kryoto-online.ini` and rewrites AppIds on the wire at runtime, so you never modify the game's `resources.assets`.
 
 > **Shortcut:** the repo-root **`patch.bat`** automates the DLL + ini steps. Drop a game folder onto it (or run `patch.bat "C:\path\to\game"`); it detects whether the game uses Photon (Realtime/PUN or Fusion, Mono or IL2CPP, and whether it ships Voice), prompts for the real Steam AppId and your Photon GUID(s), writes `kryoto-online.ini` with the right section, and copies `photon_universal.dll` into `<game>\plugins\`. Non-Photon games are detected and skipped with no changes. You still create the Photon app(s) + Cloudflare Worker (steps 1–2 below) and drop in KryotoOnline's `steam_api64.dll` yourself.
 
@@ -72,7 +72,7 @@ export default {
 };
 ```
 
-Deploy at <https://workers.cloudflare.com>, copy the resulting `https://….workers.dev` URL, and paste it into **every** Photon app you created (Realtime, Voice, Fusion — whichever apply).
+Deploy at <https://workers.cloudflare.com>, copy the resulting `https://….workers.dev` URL, and paste it into **every** Photon app you created (Realtime, Voice, Fusion - whichever apply).
 
 ### 3. Deploy the DLL
 
@@ -87,7 +87,7 @@ Create that `plugins\` folder if it doesn't exist. Also drop KryotoOnline's `ste
 
 ### 4. Configure `kryoto-online.ini`
 
-Place `kryoto-online.ini` next to the game exe. Fill in **only** the section(s) matching the game's Photon flavor — the plugin reads both and ignores the inactive one.
+Place `kryoto-online.ini` next to the game exe. Fill in **only** the section(s) matching the game's Photon flavor - the plugin reads both and ignores the inactive one.
 
 ```ini
 [Settings]
@@ -108,10 +108,10 @@ PhotonAppIdFusion=<your Fusion-type app's GUID>
 ForcedAuthType=0
 ```
 
-- `PhotonAppIdRealtime` — your Realtime app's GUID. Applied to the Realtime peer in `OpAuthenticate` and the `SendOperation` params dict.
-- `PhotonAppIdVoice` — optional. The plugin classifies peer instances at runtime (first peer = Realtime, second distinct peer = Voice) and routes the Voice peer's `params[224]` to this GUID. Required for any PUN game that ships `PhotonVoice` (like R.E.P.O.).
-- `PhotonAppIdFusion` — your Fusion app's GUID.
-- `ForcedAuthType=0` — `Custom` (matches the Custom Auth provider). Use `255` for `None` if you want pure anonymous instead.
+- `PhotonAppIdRealtime` - your Realtime app's GUID. Applied to the Realtime peer in `OpAuthenticate` and the `SendOperation` params dict.
+- `PhotonAppIdVoice` - optional. The plugin classifies peer instances at runtime (first peer = Realtime, second distinct peer = Voice) and routes the Voice peer's `params[224]` to this GUID. Required for any PUN game that ships `PhotonVoice` (like R.E.P.O.).
+- `PhotonAppIdFusion` - your Fusion app's GUID.
+- `ForcedAuthType=0` - `Custom` (matches the Custom Auth provider). Use `255` for `None` if you want pure anonymous instead.
 
 The `[Realtime]` section is also accepted under the legacy name `[PUN]`, so inis written by older tooling keep working.
 
@@ -125,17 +125,17 @@ Get-Content "$env:TEMP\kryoto-online.log" -Wait -Tail 40
 
 The lines that prove each module fired:
 
-- `[Realtime] OpAuthenticate hook @ …` / `[Realtime/Mono] module active` — Realtime/PUN hooks in place.
-- `[Realtime] SendOp op=220 (Realtime peer): params[224] AppId -> …` — wire-time AppId rewrite fired (critical: PUN's `OpGetRegions` op 220 sends an *empty* ApplicationId that Photon would otherwise reject).
-- `[Fusion] OpAuthenticate: authType X -> 0` — Fusion auth-type override fired.
-- `[Auth] SignInWithSteam intercepted -> SignInAnonymouslyAsync` — Unity Services bypass fired.
-- `[Phasmo] SteamAccountGate NOPed at GameAssembly+0x…` — Phasmo gate patched (only on that specific Phasmo build; silently skipped everywhere else).
+- `[Realtime] OpAuthenticate hook @ …` / `[Realtime/Mono] module active` - Realtime/PUN hooks in place.
+- `[Realtime] SendOp op=220 (Realtime peer): params[224] AppId -> …` - wire-time AppId rewrite fired (critical: PUN's `OpGetRegions` op 220 sends an *empty* ApplicationId that Photon would otherwise reject).
+- `[Fusion] OpAuthenticate: authType X -> 0` - Fusion auth-type override fired.
+- `[Auth] SignInWithSteam intercepted -> SignInAnonymouslyAsync` - Unity Services bypass fired.
+- `[Phasmo] SteamAccountGate NOPed at GameAssembly+0x…` - Phasmo gate patched (only on that specific Phasmo build; silently skipped everywhere else).
 
 Photon dashboard CCU going 0 → 1 confirms the connection reached your app.
 
 ## Why two Photon apps for PUN+Voice games?
 
-Games like R.E.P.O. open **two** Photon connections — one Realtime, one Voice — each with its own AppId, each validated server-side by product type. Put a Realtime AppId where Voice is expected → `InvalidAuthentication`. Leave Voice pointing at the dev's GUID → same rejection. You must create both apps and set `PhotonAppIdVoice`; the plugin routes the second peer to it automatically.
+Games like R.E.P.O. open **two** Photon connections - one Realtime, one Voice - each with its own AppId, each validated server-side by product type. Put a Realtime AppId where Voice is expected → `InvalidAuthentication`. Leave Voice pointing at the dev's GUID → same rejection. You must create both apps and set `PhotonAppIdVoice`; the plugin routes the second peer to it automatically.
 
 ## Trying it on a new game
 
@@ -145,7 +145,7 @@ The plugin auto-detects, so the practical question is just *which Photon middlew
 - **`PhotonUnityNetworking.dll` + `PhotonRealtime.dll` in `<Game>_Data\Managed\`** → Mono PUN. Fill `[Realtime]`. (If `PhotonVoice.PUN.dll` is also there, create a Voice app.)
 - **No `Managed\` folder, C# in `GameAssembly.dll`** → IL2CPP. Scan `<Game>_Data\il2cpp_data\Metadata\global-metadata.dat`: `PhotonNetwork` + `LoadBalancingClient` present (and no `NetworkRunner`) = PUN → fill `[Realtime]`; `NetworkRunner` present = Fusion → fill `[Fusion]`.
 
-If the game is pure Steam P2P with no Photon at all, you don't need this plugin — test bare first.
+If the game is pure Steam P2P with no Photon at all, you don't need this plugin - test bare first.
 
 ## Build
 
@@ -166,7 +166,7 @@ Output: `plugins\photon_universal\relbuild\x64\photon_universal.dll`. MinHook is
 ## Limitations
 
 - Players must share the same Photon AppId(s).
-- The Cloudflare Worker accepts every auth request — don't reuse that Photon app for anything real.
-- Photon free tier caps CCU (~20) — fine for friend groups, not public servers.
-- Anti-cheat blocks this — don't try it on EAC/BattlEye titles.
+- The Cloudflare Worker accepts every auth request - don't reuse that Photon app for anything real.
+- Photon free tier caps CCU (~20) - fine for friend groups, not public servers.
+- Anti-cheat blocks this - don't try it on EAC/BattlEye titles.
 - The Phasmo gate NOP is keyed to a specific build's byte signature; after a Phasmo update it silently no-ops until the signature is re-located. For other deeply-obfuscated games whose own UI gates multiplayer on auth state, you may still need the standalone [`unity_auth_bypass`](../unity_auth_bypass/) plugin.
