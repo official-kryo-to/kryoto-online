@@ -1844,6 +1844,7 @@ S_API void S_CALLTYPE SteamAPI_ISteamMatchmaking_LeaveLobby(intptr_t instancePtr
 {
 	if (g_bClientReady == false)
 		__debugbreak();
+	KryotoLobby::OnLeave(steamIDLobby.ConvertToUint64());
 	return g_ClientCtx.SteamMatchmaking()->LeaveLobby(steamIDLobby);
 }
 S_API bool S_CALLTYPE SteamAPI_ISteamMatchmaking_InviteUserToLobby(intptr_t instancePtr, class CSteamID steamIDLobby, class CSteamID steamIDInvitee)

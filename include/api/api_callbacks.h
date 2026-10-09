@@ -8,6 +8,8 @@ static void DoFrame(HSteamPipe hPipe, bool bServer)
 	if (bServer || !g_pSteamClient || hPipe != g_ClientPipe)
 		return;
 
+	KryotoLobby::Tick();
+
 	if (!g_pUtilsForCallbacks)
 	{
 		g_pUtilsForCallbacks = (ISteamUtils*)g_pSteamClient->GetISteamGenericInterface(0, g_ClientPipe, STEAMUTILS_INTERFACE_VERSION);
@@ -115,6 +117,8 @@ S_API bool S_CALLTYPE SteamAPI_ManualDispatch_GetNextCallback(HSteamPipe hPipe, 
 
 					if (pDisp->m_pfnBGetCallback(hPipe, pMsg))
 					{
+						if (hPipe == g_ClientPipe)
+							KryotoLobby::OnCallback(pMsg->m_iCallback, pMsg->m_pubParam, pMsg->m_cubParam);
 						pDisp->m_ManualCbId = pMsg->m_iCallback;
 						pDisp->m_ManualCbSize = pMsg->m_cubParam;
 						return true;
@@ -198,7 +202,10 @@ S_API bool S_CALLTYPE SteamAPI_ManualDispatch_GetAPICallResult(HSteamPipe hPipe,
 					{
 						pDisp->m_ManualCbId = 0;
 						pDisp->m_ManualCbSize = 0;
-						return pDisp->m_pfnGetAPICallResult(hPipe, hCall, pBuf, cubBuf, iExpected, pbFailed);
+						bool ok = pDisp->m_pfnGetAPICallResult(hPipe, hCall, pBuf, cubBuf, iExpected, pbFailed);
+						if (ok && !*pbFailed && hPipe == g_ClientPipe)
+							KryotoLobby::OnCallback(iExpected, pBuf, cubBuf);
+						return ok;
 					}
 					else
 					{

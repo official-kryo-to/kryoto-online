@@ -40,6 +40,7 @@
     <ClInclude Include="core\kryotoo_abi.h" />
     <ClInclude Include="include\kryotoo_host.h" />
     <ClInclude Include="include\globals.h" />
+    <ClInclude Include="include\lobby_watch.h" />
     <ClInclude Include="include\kryoto_plugin.h" />
     <ClInclude Include="include\version.h" />
   </ItemGroup>

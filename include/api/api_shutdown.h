@@ -1,5 +1,6 @@
 S_API void S_CALLTYPE SteamAPI_Shutdown()
 {
+	KryotoLobby::Shutdown();
 	KRYOTOLOG("[KryotoOnline] SteamAPI_Shutdown\r\n");
 
 	if (g_pSteamClient)
