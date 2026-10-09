@@ -4,6 +4,26 @@ The `## [x.y.z]` heading for the version in `include/version.h` becomes
 the body of that version's GitHub release, so write the entry before you
 push the bump.
 
+## [1.9.0] - 2026-10-09
+
+### Added
+
+- **The lobby you are in, for Kryoto Desktop's game invites.** While a
+  game is in a Steam lobby, `steam_api(64).dll` writes
+  `%LOCALAPPDATA%\Kryoto\online\<pid>.json` with the lobby id, your
+  SteamID, the real AppId and a timestamp it refreshes every 30 seconds.
+  Kryoto Desktop reads it to send a friend an invite that drops them into
+  the same lobby (`+connect_lobby` or `steam://joinlobby/480/...`), not
+  just into the same game.
+
+  It learns the lobby from `LobbyEnter_t` and `LobbyCreated_t` (callbacks
+  and call results, standard and manual dispatch), notices leaving through
+  the flat `LeaveLobby` or, for games that call it through the C++
+  interface, by checking membership every 5 seconds, and deletes the file
+  on leave, `SteamAPI_Shutdown` and exit. Nothing leaves the machine; it
+  is one local file. Under Wine/Proton it lands inside the prefix, where
+  Kryoto Desktop looks for it too.
+
 ## [1.8.1] - 2026-08-27
 
 ### Added

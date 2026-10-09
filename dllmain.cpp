@@ -25,6 +25,7 @@ S_API ISteamClient* g_pSteamClientGameServer = nullptr;
 #include "include/globals.h"
 #include "include/kryotoo_host.h"
 #include "include/dump_handler.h"
+#include "include/lobby_watch.h"
 
 #include "include/api/api_callbacks.h"
 #include "include/api/api_client.h"
@@ -386,6 +387,7 @@ BOOL WINAPI DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 	else if (dwReason == DLL_PROCESS_DETACH)
 	{
 		KRYOTOLOG("[KryotoOnline] DllMain -> DLL_PROCESS_DETACH");
+		KryotoLobby::Shutdown();
 		s_Core.Shutdown();
 	}
 
@@ -505,6 +507,7 @@ void CCallbackDispatcher::ExecuteCallResult(HSteamPipe hPipe, SteamAPICall_t hCa
 	{
 		size_t countBefore = m_CallbackMap.size();
 
+		KryotoLobby::OnCallback(pCb->GetICallback(), pBuffer, pCb->GetCallbackSizeBytes());
 		pCb->Run(pBuffer, bFailed, hCall);
 
 		if (countBefore != m_CallbackMap.size())
@@ -535,6 +538,8 @@ void CCallbackDispatcher::DispatchFrame(HSteamPipe hPipe, bool bServer)
 
 	KRYOTOLOG("[KryotoOnline] Callback received -> %d\r\n", msg.m_iCallback);
 	m_CurrentUser = msg.m_hSteamUser;
+	if (!bServer)
+		KryotoLobby::OnCallback(msg.m_iCallback, msg.m_pubParam, msg.m_cubParam);
 
 	if (msg.m_iCallback == SteamAPICallCompleted_t::k_iCallback && msg.m_cubParam == sizeof(SteamAPICallCompleted_t))
 	{
@@ -612,6 +617,8 @@ void CCallbackDispatcher::DispatchFrameSafe(HSteamPipe hPipe, bool bServer)
 
 		KRYOTOLOG("[KryotoOnline] Callback (safe) -> %d\r\n", msg.m_iCallback);
 		m_CurrentUser = msg.m_hSteamUser;
+		if (!bServer)
+			KryotoLobby::OnCallback(msg.m_iCallback, msg.m_pubParam, msg.m_cubParam);
 
 		if (msg.m_iCallback == SteamAPICallCompleted_t::k_iCallback && msg.m_cubParam == sizeof(SteamAPICallCompleted_t))
 		{
